@@ -1,0 +1,235 @@
+/* 
+ DHT11 data to Arduino digital 4
+ Photoresistor data to Arduino Analog 1, 2 and 3  (each using 10ku resistor)
+ FC-28 A0 to Arduino A0
+ And let them share the same 5V and GND
+ 
+ */
+#include <DHT11.h>
+int DHTpin=4;  // connect DHT11 data to Arduino digital 4
+int PhotoR1=1;  // connect photoresistor1 data to Arduino A1
+int PhotoR2=2;  // connect photoresistor2 data to Arduino A2
+int PhotoR3=3;  // connect photoresistor3 data to Arduino A3
+
+DHT11 dht11(DHTpin); 
+
+int plantTemp= 17.5;  // SET: what temperature is perfect for this plant?
+int plantMoisture= 60;  // SET: what Soil Moisture % is perfect for this plant?
+int plantLight= 90;  // SET: What light is perfect for this plant?
+int checkGap = 10000;  // SET: set checkGap time here (in mini-second)
+
+byte mode;
+unsigned long time;
+unsigned long savedTime;
+boolean checkMode = false;
+
+#include <Wire.h>
+#include <Adafruit_PWMServoDriver.h>
+
+// called this way, it uses the default address 0x40
+Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
+// you can also call it with a different address you want
+//Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x41);
+
+// Depending on your servo make, the pulse width min and max may vary, you 
+// want these to be as small/large as possible without hitting the hard stop
+// for max range. You'll have to tweak them as necessary to match the servos you
+// have!
+#define SERVOMIN  140 // this is the 'minimum' pulse length count (out of 4096)  was 150 (adjusted for my push arm)
+#define SERVOMAX  450 // this is the 'maximum' pulse length count (out of 4096)  was 600 (adjusted for my push arm)
+boolean motorReset = false;
+// our servo # counter
+uint8_t servonum = 0;
+
+
+void setup()
+{
+  Serial.begin(9600);
+  pwm.begin();
+  pwm.setPWMFreq(50);  // Analog servos run at ~60 Hz updates// MG90S== 50Hz
+  /*
+  while (!Serial) {
+   ; // wait for serial port to connect. Needed for Leonardo only
+   }
+   */
+}
+// you can use this function if you'd like to set the pulse length in seconds
+// e.g. setServoPulse(0, 0.001) is a ~1 millisecond pulse width. its not precise!
+void setServoPulse(uint8_t n, double pulse) {
+  double pulselength;
+  pulselength = 1000000;   // 1,000,000 us per second
+  pulselength /= 50;   // 50 Hz for MG90S
+  Serial.print(pulselength); 
+  Serial.println(" us per period"); 
+  pulselength /= 4096;  // 12 bits of resolution
+  Serial.print(pulselength); 
+  Serial.println(" us per bit"); 
+  pulse *= 1000;
+  pulse /= pulselength;
+  Serial.println(pulse);
+  pwm.setPWM(n, 0, pulse);
+}
+
+void loop()
+{
+  time=millis();
+
+  if (time-savedTime>checkGap){
+    checkMode=true;
+    savedTime=time;
+  }
+
+  if (checkMode==false){
+    if (mode==1){  
+      // do the motion 1 
+      int count=0;
+      while (count<360){
+        count++;
+        int pos=map(count,0,360,SERVOMIN,SERVOMAX);
+        pwm.setPWM(0,0,pos);
+        pwm.setPWM(1,0,SERVOMAX+SERVOMIN-pos);
+        pwm.setPWM(2,0,pos);
+        pwm.setPWM(3,0,SERVOMAX+SERVOMIN-pos);
+        pwm.setPWM(4,0,pos);
+        pwm.setPWM(5,0,SERVOMAX+SERVOMIN-pos);
+        pwm.setPWM(6,0,pos);
+        pwm.setPWM(7,0,SERVOMAX+SERVOMIN-pos);
+        delay(35);
+      }
+      int countBack=360;
+      while (countBack>0){
+        countBack--;
+        int pos=map(countBack,360,0,SERVOMAX,SERVOMIN);
+        pwm.setPWM(0,0,pos);
+        pwm.setPWM(1,0,SERVOMAX+SERVOMIN-pos);
+        pwm.setPWM(2,0,pos);
+        pwm.setPWM(3,0,SERVOMAX+SERVOMIN-pos);
+        pwm.setPWM(4,0,pos);
+        pwm.setPWM(5,0,SERVOMAX+SERVOMIN-pos);
+        pwm.setPWM(6,0,pos);
+        pwm.setPWM(7,0,SERVOMAX+SERVOMIN-pos);
+        delay(35);
+      }
+    }
+    else if (mode==2){  
+      // do the motion 2 
+
+    }    
+    else if (mode==3){  
+
+    }        
+
+    else if (mode==4){  
+
+    }     
+
+    else if (mode==5){  
+
+    }
+    else if (mode==6){  
+
+    }        
+    else if (mode==7){  
+
+    }   
+    else if (mode==8){  
+
+    }    
+
+    else {  // if mode == 9 
+    }
+  }
+  else{  // if checkMode==true
+    reCheck();
+    checkMode=false;
+  }
+}
+
+
+void reCheck(){
+  // Re-checking the environment and get a new mode
+  Serial.println("Re-Checking Environment !!");
+  int lightQuantity1 = map(analogRead(PhotoR1),1023,0,0,100);
+  Serial.print("LightQuantity1:");
+  Serial.print(lightQuantity1);   // weak 0% --> strong 100%
+  Serial.println("%");
+  // delay(100);
+  int lightQuantity2 = map(analogRead(PhotoR2),1023,0,0,100);
+  Serial.print("LightQuantity2:");
+  Serial.print(lightQuantity2);   // weak 0% --> strong 100%
+  Serial.println("%");
+  //delay(100);
+  int lightQuantity3 = map(analogRead(PhotoR3),1023,0,0,100);
+  Serial.print("LightQuantity3:");
+  Serial.print(lightQuantity3);   // weak 0% --> strong 100%
+  Serial.println("%");
+  //delay(100);
+  int lightAverage = (lightQuantity1+ lightQuantity2 + lightQuantity3)/3;
+  Serial.print("Light Average:");
+  Serial.print(lightAverage);   // weak 0% --> strong 100%
+  Serial.println("%");
+
+  int soilMoisture = map(analogRead(A0),1023,0,0,100);  
+  Serial.print("SoilMoisture:");
+  Serial.print(soilMoisture);  // // dry 0% --> wet 100%
+  Serial.println("%");
+
+  int err;
+  float temp, humi;
+  if((err=dht11.read(humi, temp))==0)
+  {
+    Serial.print("Temperature:");
+    Serial.print(temp);
+    Serial.print(" AirHumidity:");
+    Serial.print(humi);
+    Serial.println();
+  }
+  else
+  {
+    Serial.println();
+    Serial.print("Error No :");
+    Serial.print(err);
+    Serial.println();    
+  }
+
+  float tempDistance= abs(temp-plantTemp);
+  Serial.print("tempDistance:");
+  Serial.println(tempDistance); 
+
+  float moisDistance = abs(soilMoisture-plantMoisture);
+  Serial.print("moisDistance:");
+  Serial.println(moisDistance); 
+
+  float lightDistance = abs(lightAverage-plantLight);
+  Serial.print("lightDistance:");
+  Serial.println(lightDistance); 
+
+  int totalDistance= tempDistance*5+moisDistance+lightDistance;
+  Serial.print("totalDistance:");
+  Serial.println(totalDistance); 
+
+  if (totalDistance<200){
+    mode=1;
+  }
+
+  delay(DHT11_RETRY_DELAY); //delay for reread
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
