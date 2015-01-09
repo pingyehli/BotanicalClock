@@ -1,5 +1,5 @@
 /* 
- This code is for Exhibition in Space 4 Culture Lab
+ This code is for Exhibition in Space 4 Culture Lab, Newcastle University.
  The sensors detects the environment, decide mode 0-1-2-3
  and show light and soil humidity on the center clock
  and shows the motions
