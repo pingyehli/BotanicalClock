@@ -1,0 +1,802 @@
+
+
+/* 
+ This code is for Exhibition demo
+ The sensors keep detecting the environment, and show it on the center clock
+ But the motions are
+ 
+ DHT11 data to Arduino digital 4
+ Photoresistor data to Arduino Analog 1, 2 and 3  (each using 10ku resistor)
+ FC-28 A0 to Arduino A0
+ And let them share the same 5V and GND
+ 
+ */
+
+#include <DHT11.h>
+int DHTpin=4;  // connect DHT11 data to Arduino digital 4
+int PhotoR1=1;  // connect photoresistor1 data to Arduino A1
+int PhotoR2=2;  // connect photoresistor2 data to Arduino A2
+int PhotoR3=3;  // connect photoresistor3 data to Arduino A3
+
+DHT11 dht11(DHTpin); 
+
+int plantTemp= 17.5;  // SET: what temperature is perfect for this plant?
+int plantMoisture= 60;  // SET: what Soil Moisture % is perfect for this plant?
+int plantLight= 90;  // SET: What light is perfect for this plant?
+int checkGap = 10000;  // SET: set checkGap time here (in mini-second)
+
+int mode;
+unsigned long time;
+unsigned long savedTime;
+boolean checkMode = false;
+
+#include <Wire.h>
+#include <Adafruit_PWMServoDriver.h>
+
+// called this way, it uses the default address 0x40
+Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
+// you can also call it with a different address you want
+//Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x41);
+
+// Depending on your servo make, the pulse width min and max may vary, you 
+// want these to be as small/large as possible without hitting the hard stop
+// for max range. You'll have to tweak them as necessary to match the servos you
+// have!
+#define SERVOMIN  140 // this is the 'minimum' pulse length count (out of 4096)  was 150 (adjusted for my push arm)
+#define SERVOMAX  450 // this is the 'maximum' pulse length count (out of 4096)  was 600 (adjusted for my push arm)
+boolean motorReset = false;
+// our servo # counter
+uint8_t servonum = 0;
+int lightAverage;
+int soilMoisture;
+
+void setup()
+{
+  Serial.begin(9600);
+  pwm.begin();
+  pwm.setPWMFreq(50);  // Analog servos run at ~60 Hz updates// MG90S== 50Hz
+  /*
+  while (!Serial) {
+   ; // wait for serial port to connect. Needed for Leonardo only
+   }
+   */
+}
+// you can use this function if you'd like to set the pulse length in seconds
+// e.g. setServoPulse(0, 0.001) is a ~1 millisecond pulse width. its not precise!
+void setServoPulse(uint8_t n, double pulse) {
+  double pulselength;
+  pulselength = 1000000;   // 1,000,000 us per second
+  pulselength /= 50;   // 50 Hz for MG90S
+  Serial.print(pulselength); 
+  Serial.println(" us per period"); 
+  pulselength /= 4096;  // 12 bits of resolution
+  Serial.print(pulselength); 
+  Serial.println(" us per bit"); 
+  pulse *= 1000;
+  pulse /= pulselength;
+  Serial.println(pulse);
+  pwm.setPWM(n, 0, pulse);
+}
+
+void loop()
+{
+
+  reCheck();
+  delay(2000);
+  // show soilMoisture in the Center-Clock
+
+  int moisPos=map(soilMoisture,0,100,SERVOMIN,SERVOMAX);
+  Serial.print("moisPos");
+  Serial.println(moisPos);
+  pwm.setPWM(8,0,moisPos);
+  delay(2000);
+
+  // show lightAverage in the Center-Clock
+
+  int lightPos=map(lightAverage,0,100,SERVOMIN,SERVOMAX);
+  Serial.print("lightPos");
+  Serial.println(lightPos);
+  pwm.setPWM(9,0,lightPos);
+  delay(2000);
+
+
+  mode= int(random(4));
+  Serial.println(mode); //0 1 2 3
+
+  if (mode==0){  
+    // reset first 
+    Serial.println("reseting for motion 0");
+    pwm.setPWM(0,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(1,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(2,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(3,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(4,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(5,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(6,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(7,0,SERVOMIN);
+    delay(500);
+
+    // do the motion 0 - RHYTHM UP AND RHYTHM DOWN
+    Serial.println("doing motion 0");
+    mode00Up();
+    mode00Down();
+    mode00Up();
+    mode00Down();
+  }
+
+
+  if (mode==1){ 
+    // reset first
+    Serial.println("reseting for motion 1");
+    pwm.setPWM(0,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(1,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(2,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(3,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(4,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(5,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(6,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(7,0,SERVOMIN);
+    delay(500);
+    int count_=0;
+    while (count_<360){
+      count_++;
+      int pos=map(count_,0,360,SERVOMIN,SERVOMAX);
+      pwm.setPWM(1,0,pos);
+      pwm.setPWM(3,0,pos);
+      pwm.setPWM(5,0,pos);
+      pwm.setPWM(7,0,pos);
+      delay(20);
+    }
+
+    // do the motion 1 - 0246OUT when 1357IN - 0246IN when 1357OUT - AND ALL RETURN TO CENTER AT LAST
+    Serial.println("doing motion 1");
+    mode01(); // mode01() will finally goes back to center
+  }
+
+
+
+  if (mode==2){ 
+    // reset first
+    Serial.println("reseting for motion 2");
+    pwm.setPWM(0,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(1,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(2,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(3,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(4,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(5,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(6,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(7,0,SERVOMIN);
+    delay(500);
+
+    // do the motion 2 - 0246OUT - 1357OUT - 0246IN - 1357IN
+    Serial.println("doing motion 2");
+    mode02();
+  }
+
+
+  if (mode==3){ 
+    // reset first
+    Serial.println("reseting for motion 3");
+    pwm.setPWM(0,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(1,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(2,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(3,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(4,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(5,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(6,0,SERVOMIN);
+    delay(500);
+    pwm.setPWM(7,0,SERVOMIN);
+    delay(500);
+    // do the motion 3 - SLOW ALL OUT - FAST ALL IN
+    Serial.println("doing motion 3");
+    mode03();
+  }
+
+
+}
+
+
+void reCheck(){
+  // Re-checking the environment and get a new mode
+  Serial.println("Re-Checking Environment !!");
+  int lightQuantity1 = map(analogRead(PhotoR1),1023,0,0,100);
+  Serial.print("LightQuantity1:");
+  Serial.print(lightQuantity1);   // weak 0% --> strong 100%
+  Serial.println("%");
+  // delay(100);
+  int lightQuantity2 = map(analogRead(PhotoR2),1023,0,0,100);
+  Serial.print("LightQuantity2:");
+  Serial.print(lightQuantity2);   // weak 0% --> strong 100%
+  Serial.println("%");
+  //delay(100);
+  int lightQuantity3 = map(analogRead(PhotoR3),1023,0,0,100);
+  Serial.print("LightQuantity3:");
+  Serial.print(lightQuantity3);   // weak 0% --> strong 100%
+  Serial.println("%");
+  //delay(100);
+  lightAverage = (lightQuantity1+ lightQuantity2 + lightQuantity3)/3;
+  Serial.print("Light Average:");
+  Serial.print(lightAverage);   // weak 0% --> strong 100%
+  Serial.println("%");
+
+  soilMoisture = map(analogRead(A0),1023,0,0,100);  
+  Serial.print("SoilMoisture:");
+  Serial.print(soilMoisture);  // // dry 0% --> wet 100%
+  Serial.println("%");
+
+  int err;
+  float temp, humi;
+  if((err=dht11.read(humi, temp))==0)
+  {
+    Serial.print("Temperature:");
+    Serial.print(temp);
+    Serial.print(" AirHumidity:");
+    Serial.print(humi);
+    Serial.println();
+  }
+  else
+  {
+    Serial.println();
+    Serial.print("Error No :");
+    Serial.print(err);
+    Serial.println();    
+  }
+
+  float tempDistance= abs(temp-plantTemp);
+  Serial.print("tempDistance:");
+  Serial.println(tempDistance); 
+
+  float moisDistance = abs(soilMoisture-plantMoisture);
+  Serial.print("moisDistance:");
+  Serial.println(moisDistance); 
+
+  float lightDistance = abs(lightAverage-plantLight);
+  Serial.print("lightDistance:");
+  Serial.println(lightDistance); 
+
+  int totalDistance= tempDistance*5+moisDistance+lightDistance;
+  Serial.print("totalDistance:");
+  Serial.println(totalDistance); 
+
+  if (totalDistance<200){
+    mode=1;
+  }
+
+  delay(DHT11_RETRY_DELAY); //delay for reread
+
+
+}
+
+
+
+
+
+
+
+void mode00Up(){
+  // SERVOMIN =140, SERVOMAX=450
+  // rhytem move
+  // total is (450-140)*2= 620 counts
+  // 620/16(because we have 8 motors)=38.7 per step
+
+    uint16_t pulselen = SERVOMIN;
+  while(pulselen < 140+620){
+    pulselen++;
+    if(pulselen>=SERVOMIN && pulselen <SERVOMIN+38.7){
+      pwm.setPWM(0,0,pulselen);
+      delay(35);
+    }
+    if(pulselen>=SERVOMIN+38.7 && pulselen <SERVOMIN +(38.7*2)){
+      pwm.setPWM(0,0,pulselen);
+      pwm.setPWM(1,0,pulselen-38.7);
+      delay(35);
+    }
+    if(pulselen>=SERVOMIN+(38.7*2) && pulselen <SERVOMIN+(38.7*3)){
+      pwm.setPWM(0,0,pulselen);
+      pwm.setPWM(1,0,pulselen-38.7);
+      pwm.setPWM(2,0,pulselen-(38.7*2));
+      delay(35);
+    }
+    if(pulselen>=SERVOMIN+(38.7*3) && pulselen <SERVOMIN +(38.7*4)){
+      pwm.setPWM(0,0,pulselen);
+      pwm.setPWM(1,0,pulselen-38.7);
+      pwm.setPWM(2,0,pulselen-(38.7*2));
+      pwm.setPWM(3,0,pulselen-(38.7*3));
+      delay(35);
+    }
+    if(pulselen>=SERVOMIN+(38.7*4) && pulselen <SERVOMIN +(38.7*5)){
+      pwm.setPWM(0,0,pulselen);
+      pwm.setPWM(1,0,pulselen-38.7);
+      pwm.setPWM(2,0,pulselen-(38.7*2));
+      pwm.setPWM(3,0,pulselen-(38.7*3));
+      pwm.setPWM(4,0,pulselen-(38.7*4));
+      delay(35);
+    }
+    if(pulselen>=SERVOMIN+(38.7*5) && pulselen <SERVOMIN +(38.7*6)){
+      pwm.setPWM(0,0,pulselen);
+      pwm.setPWM(1,0,pulselen-38.7);
+      pwm.setPWM(2,0,pulselen-(38.7*2));
+      pwm.setPWM(3,0,pulselen-(38.7*3));
+      pwm.setPWM(4,0,pulselen-(38.7*4));
+      pwm.setPWM(5,0,pulselen-(38.7*5));
+      delay(35);
+    }
+    if(pulselen>=SERVOMIN+(38.7*6) && pulselen <SERVOMIN +(38.7*7)){
+      pwm.setPWM(0,0,pulselen);
+      pwm.setPWM(1,0,pulselen-38.7);
+      pwm.setPWM(2,0,pulselen-(38.7*2));
+      pwm.setPWM(3,0,pulselen-(38.7*3));
+      pwm.setPWM(4,0,pulselen-(38.7*4));
+      pwm.setPWM(5,0,pulselen-(38.7*5));
+      pwm.setPWM(6,0,pulselen-(38.7*6));
+      delay(35);
+    }
+    if(pulselen>=SERVOMIN+(38.7*7) && pulselen <SERVOMIN +(38.7*8)){
+      pwm.setPWM(0,0,pulselen);  // this one will be approaching 449.6 
+      pwm.setPWM(1,0,pulselen-38.7);
+      pwm.setPWM(2,0,pulselen-(38.7*2));
+      pwm.setPWM(3,0,pulselen-(38.7*3));
+      pwm.setPWM(4,0,pulselen-(38.7*4));
+      pwm.setPWM(5,0,pulselen-(38.7*5));
+      pwm.setPWM(6,0,pulselen-(38.7*6));
+      pwm.setPWM(7,0,pulselen-(38.7*7));
+      delay(35);
+    }
+    if(pulselen>=SERVOMIN+(38.7*8) && pulselen <SERVOMIN +(38.7*9)){
+      pwm.setPWM(0,0,SERVOMAX);  // stay at SERVOMAX = 450
+      pwm.setPWM(1,0,pulselen-38.7);
+      pwm.setPWM(2,0,pulselen-(38.7*2));
+      pwm.setPWM(3,0,pulselen-(38.7*3));
+      pwm.setPWM(4,0,pulselen-(38.7*4));
+      pwm.setPWM(5,0,pulselen-(38.7*5));
+      pwm.setPWM(6,0,pulselen-(38.7*6));
+      pwm.setPWM(7,0,pulselen-(38.7*7));
+      delay(35);
+    }
+    if(pulselen>=SERVOMIN+(38.7*9) && pulselen <SERVOMIN +(38.7*10)){
+      pwm.setPWM(0,0,SERVOMAX);
+      pwm.setPWM(1,0,SERVOMAX);
+      pwm.setPWM(2,0,pulselen-(38.7*2));
+      pwm.setPWM(3,0,pulselen-(38.7*3));
+      pwm.setPWM(4,0,pulselen-(38.7*4));
+      pwm.setPWM(5,0,pulselen-(38.7*5));
+      pwm.setPWM(6,0,pulselen-(38.7*6));
+      pwm.setPWM(7,0,pulselen-(38.7*7));
+      delay(35);
+    }
+    if(pulselen>=SERVOMIN+(38.7*10) && pulselen <SERVOMIN+(38.7*11)){
+      pwm.setPWM(0,0,SERVOMAX);
+      pwm.setPWM(1,0,SERVOMAX);
+      pwm.setPWM(2,0,SERVOMAX);
+      pwm.setPWM(3,0,pulselen-(38.7*3));
+      pwm.setPWM(4,0,pulselen-(38.7*4));
+      pwm.setPWM(5,0,pulselen-(38.7*5));
+      pwm.setPWM(6,0,pulselen-(38.7*6));
+      pwm.setPWM(7,0,pulselen-(38.7*7));
+      delay(35);
+    }
+    if(pulselen>=SERVOMIN+(38.7*11) && pulselen <SERVOMIN +(38.7*12)){
+      pwm.setPWM(0,0,SERVOMAX);
+      pwm.setPWM(1,0,SERVOMAX);
+      pwm.setPWM(2,0,SERVOMAX);
+      pwm.setPWM(3,0,SERVOMAX);
+      pwm.setPWM(4,0,pulselen-(38.7*4));
+      pwm.setPWM(5,0,pulselen-(38.7*5));
+      pwm.setPWM(6,0,pulselen-(38.7*6));
+      pwm.setPWM(7,0,pulselen-(38.7*7));
+      delay(35);
+    }
+    if(pulselen>=SERVOMIN+(38.7*12) && pulselen <SERVOMIN +(38.7*13)){
+      pwm.setPWM(0,0,SERVOMAX);
+      pwm.setPWM(1,0,SERVOMAX);
+      pwm.setPWM(2,0,SERVOMAX);
+      pwm.setPWM(3,0,SERVOMAX);
+      pwm.setPWM(4,0,SERVOMAX);
+      pwm.setPWM(5,0,pulselen-(38.7*5));
+      pwm.setPWM(6,0,pulselen-(38.7*6));
+      pwm.setPWM(7,0,pulselen-(38.7*7));
+      delay(35);
+    }
+    if(pulselen>=SERVOMIN+(38.7*13) && pulselen <SERVOMIN +(38.7*14)){
+      pwm.setPWM(0,0,SERVOMAX);
+      pwm.setPWM(1,0,SERVOMAX);
+      pwm.setPWM(2,0,SERVOMAX);
+      pwm.setPWM(3,0,SERVOMAX);
+      pwm.setPWM(4,0,SERVOMAX);
+      pwm.setPWM(5,0,SERVOMAX);
+      pwm.setPWM(6,0,pulselen-(38.7*6));
+      pwm.setPWM(7,0,pulselen-(38.7*7));
+      delay(35);
+    }
+    if(pulselen>=SERVOMIN+(38.7*14) && pulselen <SERVOMIN +(38.7*15)){
+      pwm.setPWM(0,0,SERVOMAX);
+      pwm.setPWM(1,0,SERVOMAX);
+      pwm.setPWM(2,0,SERVOMAX);
+      pwm.setPWM(3,0,SERVOMAX);
+      pwm.setPWM(4,0,SERVOMAX);
+      pwm.setPWM(5,0,SERVOMAX);
+      pwm.setPWM(6,0,SERVOMAX);
+      pwm.setPWM(7,0,pulselen-(38.7*7));
+      delay(35);
+    }
+    if(pulselen>=SERVOMIN+(38.7*15) && pulselen <SERVOMIN +(38.7*16)){
+      pwm.setPWM(0,0,SERVOMAX);
+      pwm.setPWM(1,0,SERVOMAX);
+      pwm.setPWM(2,0,SERVOMAX);
+      pwm.setPWM(3,0,SERVOMAX);
+      pwm.setPWM(4,0,SERVOMAX);
+      pwm.setPWM(5,0,SERVOMAX);
+      pwm.setPWM(6,0,SERVOMAX);
+      pwm.setPWM(7,0,SERVOMAX);
+      delay(35);
+    }
+  }
+}
+
+void mode00Down(){
+  uint16_t pulselen = 140+620;  // from the top (140+620) to count down to 140
+
+    while(pulselen>SERVOMIN){ 
+    pulselen--;
+    if(pulselen<=140+620 && pulselen> 140+620-38.7){
+      pwm.setPWM(0,0,pulselen-310);  // begin with 450
+      delay(35);
+    }
+    if(pulselen<=140+620-38.7 && pulselen> 140+620-(38.7*2)){
+      pwm.setPWM(0,0,pulselen-310);
+      pwm.setPWM(1,0,pulselen-310+38.7); // begin with 450
+      delay(35);
+    }
+    if(pulselen<=140+620-(38.7*2) && pulselen> 140+620-(38.7*3)){
+      pwm.setPWM(0,0,pulselen-310);
+      pwm.setPWM(1,0,pulselen-310+38.7);
+      pwm.setPWM(2,0,pulselen-310+(38.7*2)); // begin with 450 
+      delay(35);
+    }
+    if(pulselen<=140+620-(38.7*3) && pulselen> 140+620-(38.7*4)){
+      pwm.setPWM(0,0,pulselen-310);
+      pwm.setPWM(1,0,pulselen-310+38.7);
+      pwm.setPWM(2,0,pulselen-310+(38.7*2));
+      pwm.setPWM(3,0,pulselen-310+(38.7*3)); // begin with 450  
+      delay(35);
+    }
+    if(pulselen<=140+620-(38.7*4) && pulselen> 140+620-(38.7*5)){
+      pwm.setPWM(0,0,pulselen-310);
+      pwm.setPWM(1,0,pulselen-310+38.7);
+      pwm.setPWM(2,0,pulselen-310+(38.7*2));
+      pwm.setPWM(3,0,pulselen-310+(38.7*3)); 
+      pwm.setPWM(4,0,pulselen-310+(38.7*4)); // begin with 450
+      delay(35);
+    }
+    if(pulselen<=140+620-(38.7*5) && pulselen> 140+620-(38.7*6)){
+      pwm.setPWM(0,0,pulselen-310);
+      pwm.setPWM(1,0,pulselen-310+38.7);
+      pwm.setPWM(2,0,pulselen-310+(38.7*2));
+      pwm.setPWM(3,0,pulselen-310+(38.7*3)); 
+      pwm.setPWM(4,0,pulselen-310+(38.7*4));
+      pwm.setPWM(5,0,pulselen-310+(38.7*5)); // begin with 450
+      delay(35);
+    }
+    if(pulselen<=140+620-(38.7*6) && pulselen> 140+620-(38.7*7)){
+      pwm.setPWM(0,0,pulselen-310);
+      pwm.setPWM(1,0,pulselen-310+38.7);
+      pwm.setPWM(2,0,pulselen-310+(38.7*2));
+      pwm.setPWM(3,0,pulselen-310+(38.7*3)); 
+      pwm.setPWM(4,0,pulselen-310+(38.7*4));
+      pwm.setPWM(5,0,pulselen-310+(38.7*5));
+      pwm.setPWM(6,0,pulselen-310+(38.7*6)); // begin with 450
+      delay(35);
+    }
+    if(pulselen<=140+620-(38.7*7) && pulselen> 140+620-(38.7*8)){
+      pwm.setPWM(0,0,pulselen-310); // will be approaching 141.6
+      pwm.setPWM(1,0,pulselen-310+38.7);
+      pwm.setPWM(2,0,pulselen-310+(38.7*2));
+      pwm.setPWM(3,0,pulselen-310+(38.7*3)); 
+      pwm.setPWM(4,0,pulselen-310+(38.7*4));
+      pwm.setPWM(5,0,pulselen-310+(38.7*5));
+      pwm.setPWM(6,0,pulselen-310+(38.7*6));
+      pwm.setPWM(7,0,pulselen-310+(38.7*7)); // begin with 450
+      delay(35);
+    }
+    if(pulselen<=140+620-(38.7*8) && pulselen> 140+620-(38.7*9)){
+      pwm.setPWM(0,0,SERVOMIN); // stay at the end SERVOMIN 140
+      pwm.setPWM(1,0,pulselen-310+38.7);
+      pwm.setPWM(2,0,pulselen-310+(38.7*2));
+      pwm.setPWM(3,0,pulselen-310+(38.7*3)); 
+      pwm.setPWM(4,0,pulselen-310+(38.7*4));
+      pwm.setPWM(5,0,pulselen-310+(38.7*5));
+      pwm.setPWM(6,0,pulselen-310+(38.7*6));
+      pwm.setPWM(7,0,pulselen-310+(38.7*7)); 
+      delay(35);
+    }
+    if(pulselen<=140+620-(38.7*9) && pulselen> 140+620-(38.7*10)){
+      pwm.setPWM(0,0,SERVOMIN); // stay at the end SERVOMIN 140
+      pwm.setPWM(1,0,SERVOMIN);
+      pwm.setPWM(2,0,pulselen-310+(38.7*2));
+      pwm.setPWM(3,0,pulselen-310+(38.7*3)); 
+      pwm.setPWM(4,0,pulselen-310+(38.7*4));
+      pwm.setPWM(5,0,pulselen-310+(38.7*5));
+      pwm.setPWM(6,0,pulselen-310+(38.7*6));
+      pwm.setPWM(7,0,pulselen-310+(38.7*7)); 
+      delay(35);
+    }
+    if(pulselen<=140+620-(38.7*10) && pulselen> 140+620-(38.7*11)){
+      pwm.setPWM(0,0,SERVOMIN); // stay at the end SERVOMIN 140
+      pwm.setPWM(1,0,SERVOMIN);
+      pwm.setPWM(2,0,SERVOMIN);
+      pwm.setPWM(3,0,pulselen-310+(38.7*3)); 
+      pwm.setPWM(4,0,pulselen-310+(38.7*4));
+      pwm.setPWM(5,0,pulselen-310+(38.7*5));
+      pwm.setPWM(6,0,pulselen-310+(38.7*6));
+      pwm.setPWM(7,0,pulselen-310+(38.7*7)); 
+      delay(35);
+    }
+    if(pulselen<=140+620-(38.7*11) && pulselen> 140+620-(38.7*12)){
+      pwm.setPWM(0,0,SERVOMIN); // stay at the end SERVOMIN 140
+      pwm.setPWM(1,0,SERVOMIN);
+      pwm.setPWM(2,0,SERVOMIN);
+      pwm.setPWM(3,0,SERVOMIN); 
+      pwm.setPWM(4,0,pulselen-310+(38.7*4));
+      pwm.setPWM(5,0,pulselen-310+(38.7*5));
+      pwm.setPWM(6,0,pulselen-310+(38.7*6));
+      pwm.setPWM(7,0,pulselen-310+(38.7*7)); 
+      delay(35);
+    }
+    if(pulselen<=140+620-(38.7*12) && pulselen> 140+620-(38.7*13)){
+      pwm.setPWM(0,0,SERVOMIN); // stay at the end SERVOMIN 140
+      pwm.setPWM(1,0,SERVOMIN);
+      pwm.setPWM(2,0,SERVOMIN);
+      pwm.setPWM(3,0,SERVOMIN); 
+      pwm.setPWM(4,0,SERVOMIN);
+      pwm.setPWM(5,0,pulselen-310+(38.7*5));
+      pwm.setPWM(6,0,pulselen-310+(38.7*6));
+      pwm.setPWM(7,0,pulselen-310+(38.7*7)); 
+      delay(35);
+    }
+    if(pulselen<=140+620-(38.7*13) && pulselen> 140+620-(38.7*14)){
+      pwm.setPWM(0,0,SERVOMIN); // stay at the end SERVOMIN 140
+      pwm.setPWM(1,0,SERVOMIN);
+      pwm.setPWM(2,0,SERVOMIN);
+      pwm.setPWM(3,0,SERVOMIN); 
+      pwm.setPWM(4,0,SERVOMIN);
+      pwm.setPWM(5,0,SERVOMIN);
+      pwm.setPWM(6,0,pulselen-310+(38.7*6));
+      pwm.setPWM(7,0,pulselen-310+(38.7*7)); 
+      delay(35);
+    }
+    if(pulselen<=140+620-(38.7*14) && pulselen> 140+620-(38.7*15)){
+      pwm.setPWM(0,0,SERVOMIN); // stay at the end SERVOMIN 140
+      pwm.setPWM(1,0,SERVOMIN);
+      pwm.setPWM(2,0,SERVOMIN);
+      pwm.setPWM(3,0,SERVOMIN); 
+      pwm.setPWM(4,0,SERVOMIN);
+      pwm.setPWM(5,0,SERVOMIN);
+      pwm.setPWM(6,0,SERVOMIN);
+      pwm.setPWM(7,0,pulselen-310+(38.7*7)); 
+      delay(35);
+    }
+    if(pulselen<=140+620-(38.7*15) && pulselen> 140+620-(38.7*16)){
+      pwm.setPWM(0,0,SERVOMIN); // All stay at the end SERVOMIN 140
+      pwm.setPWM(1,0,SERVOMIN); 
+      pwm.setPWM(2,0,SERVOMIN); 
+      pwm.setPWM(3,0,SERVOMIN); 
+      pwm.setPWM(4,0,SERVOMIN); 
+      pwm.setPWM(5,0,SERVOMIN); 
+      pwm.setPWM(6,0,SERVOMIN); 
+      pwm.setPWM(7,0,SERVOMIN); 
+      delay(35);
+    }
+
+  }
+
+}
+
+
+void mode01(){
+  // do the motion 1 
+  int count=0;
+  while (count<360){
+    count++;
+    int pos=map(count,0,360,SERVOMIN,SERVOMAX);
+    pwm.setPWM(0,0,pos);
+    pwm.setPWM(1,0,SERVOMAX+SERVOMIN-pos);
+    pwm.setPWM(2,0,pos);
+    pwm.setPWM(3,0,SERVOMAX+SERVOMIN-pos);
+    pwm.setPWM(4,0,pos);
+    pwm.setPWM(5,0,SERVOMAX+SERVOMIN-pos);
+    pwm.setPWM(6,0,pos);
+    pwm.setPWM(7,0,SERVOMAX+SERVOMIN-pos);
+    delay(35);
+  }
+  int countBack=360;
+  while (countBack>0){
+    countBack--;
+    int pos=map(countBack,360,0,SERVOMAX,SERVOMIN);
+    pwm.setPWM(0,0,pos);
+    pwm.setPWM(1,0,SERVOMAX+SERVOMIN-pos);
+    pwm.setPWM(2,0,pos);
+    pwm.setPWM(3,0,SERVOMAX+SERVOMIN-pos);
+    pwm.setPWM(4,0,pos);
+    pwm.setPWM(5,0,SERVOMAX+SERVOMIN-pos);
+    pwm.setPWM(6,0,pos);
+    pwm.setPWM(7,0,SERVOMAX+SERVOMIN-pos);
+    delay(35);
+  }
+  count=0;
+  while (count<360){
+    count++;
+    int pos=map(count,0,360,SERVOMIN,SERVOMAX);
+    pwm.setPWM(0,0,pos);
+    pwm.setPWM(1,0,SERVOMAX+SERVOMIN-pos);
+    pwm.setPWM(2,0,pos);
+    pwm.setPWM(3,0,SERVOMAX+SERVOMIN-pos);
+    pwm.setPWM(4,0,pos);
+    pwm.setPWM(5,0,SERVOMAX+SERVOMIN-pos);
+    pwm.setPWM(6,0,pos);
+    pwm.setPWM(7,0,SERVOMAX+SERVOMIN-pos);
+    delay(35);
+  }
+  countBack=360;
+  while (countBack>0){
+    countBack--;
+    int pos=map(countBack,360,0,SERVOMAX,SERVOMIN);
+    pwm.setPWM(0,0,pos);
+    pwm.setPWM(1,0,SERVOMAX+SERVOMIN-pos);
+    pwm.setPWM(2,0,pos);
+    pwm.setPWM(3,0,SERVOMAX+SERVOMIN-pos);
+    pwm.setPWM(4,0,pos);
+    pwm.setPWM(5,0,SERVOMAX+SERVOMIN-pos);
+    pwm.setPWM(6,0,pos);
+    pwm.setPWM(7,0,SERVOMAX+SERVOMIN-pos);
+    delay(35);
+  }
+  countBack=360;
+  while (countBack>0){
+    countBack--;
+    int pos=map(countBack,360,0,SERVOMAX,SERVOMIN);
+    pwm.setPWM(1,0,pos);
+    pwm.setPWM(3,0,pos); 
+    pwm.setPWM(5,0,pos);
+    pwm.setPWM(7,0,pos);
+    delay(40);
+  }
+}
+
+
+
+
+void mode02(){
+  // do the motion 1 
+  int count=0;
+  while (count<360){
+    count++;
+    int pos=map(count,0,360,SERVOMIN,SERVOMAX);
+    pwm.setPWM(0,0,pos);
+    pwm.setPWM(2,0,pos);
+    pwm.setPWM(4,0,pos);
+    pwm.setPWM(6,0,pos);
+    delay(30);
+  }
+
+  count=0;
+  while (count<360){
+    count++;
+    int pos=map(count,0,360,SERVOMIN,SERVOMAX);
+    pwm.setPWM(1,0,pos);
+    pwm.setPWM(3,0,pos);
+    pwm.setPWM(5,0,pos);
+    pwm.setPWM(7,0,pos);
+    delay(30);
+  }
+
+  int countBack=360;
+  while (countBack>0){
+    countBack--;
+    int pos=map(countBack,360,0,SERVOMAX,SERVOMIN);
+    pwm.setPWM(0,0,pos);
+    pwm.setPWM(2,0,pos);
+    pwm.setPWM(4,0,pos);
+    pwm.setPWM(6,0,pos);
+    delay(40);
+  }
+
+  countBack=360;
+  while (countBack>0){
+    countBack--;
+    int pos=map(countBack,360,0,SERVOMAX,SERVOMIN);
+    pwm.setPWM(1,0,pos);
+    pwm.setPWM(3,0,pos);
+    pwm.setPWM(5,0,pos);
+    pwm.setPWM(7,0,pos);
+    delay(40);
+  }
+}
+
+void mode03(){
+  // do the motion 1 
+  int count=0;
+  while (count<360){
+    count++;
+    int pos=map(count,0,360,SERVOMIN,SERVOMAX);
+    pwm.setPWM(0,0,pos);
+    pwm.setPWM(1,0,pos);
+    pwm.setPWM(2,0,pos);
+    pwm.setPWM(3,0,pos);
+    pwm.setPWM(4,0,pos);
+    pwm.setPWM(5,0,pos);
+    pwm.setPWM(6,0,pos);
+    pwm.setPWM(7,0,pos);
+    delay(40);
+  }
+  int countBack=360;
+  while (countBack>0){
+    countBack--;
+    int pos=map(countBack,360,0,SERVOMAX,SERVOMIN);
+    pwm.setPWM(0,0,pos);
+    pwm.setPWM(1,0,pos);
+    pwm.setPWM(2,0,pos);
+    pwm.setPWM(3,0,pos);
+    pwm.setPWM(4,0,pos);
+    pwm.setPWM(5,0,pos);
+    pwm.setPWM(6,0,pos);
+    pwm.setPWM(7,0,pos);
+    delay(25);
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
